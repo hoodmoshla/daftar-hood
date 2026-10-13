@@ -1,0 +1,11 @@
+# نُسخ ولن تُرفع إلى المستودع
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+.env.local

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>اختبار واجهة دفتر هود</title>
+<link rel="stylesheet" href="../app/css/style.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="modal"></div>
+<div id="toast" class="toast"></div>
+<script src="../app/js/store.js"></script>
+<script src="../app/js/ai.js"></script>
+<script src="../app/js/assist.js"></script>
+<script src="../app/js/calendar.js"></script>
+<script src="../app/js/ui.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   اختبار الواجهة الفعلي — يُشغَّل داخل المتصفح
+   يتحقق من العرض، النقرات، الحفظ، والتفاعل الحقيقي.
+   ═══════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  const results = [];
+  window.__TEST_RESULTS__ = results;
+
+  function ok(name, cond, detail) {
+    results.push({ name, pass: !!cond, detail: detail || '' });
+  }
+
+  function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function run() {
+    try {
+      localStorage.clear();
+      DH.store.load();
+      DH.ui.boot();
+      await wait(120);
+
+      const app = document.getElementById('app');
+
+      /* ── ١. العرض الأساسي ── */
+      ok('التطبيق يعرض الترويسة', app.querySelector('.app-header') !== null);
+      ok('يعرض التحية', /صباح الخير|مساء الخير/.test(app.textContent));
+      ok('يعرض تاريخ اليوم', /الأحد|الاثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت/.test(app.textContent));
+      ok('يعرض ٤ بطاقات ملخص', app.querySelectorAll('.sum-card').length === 4);
+      ok('يعرض مربع الإملاء', app.querySelector('#capture-input') !== null);
+      ok('يعرض زر الإملاء الصوتي', app.querySelector('#btn-mic') !== null);
+      ok('يعرض عامود تبويبات', app.querySelector('#tabs') !== null);
+      ok('التبويبات: الكل + ٣ أقسام', app.querySelectorAll('.tab[data-sec]').length === 4);
+      ok('يعرض قسم الاجتماعات', app.querySelector('#meetings-sec') !== null);
+      ok('يعرض قسم «أقدر أساعدك فيها»', /أقدر أساعدك فيها/.test(app.textContent));
+      ok('يعرض قسم «أُنجزت اليوم»', /أُنجزت اليوم/.test(app.textContent));
+      ok('يعرض الشريط السفلي', app.querySelector('.bottom-bar') !== null);
+      ok('يعرض مرشحات البحث', app.querySelector('#flt-search') !== null);
+      ok('الاتجاه RTL مُطبّق', document.documentElement.getAttribute('dir') === 'rtl');
+
+      /* ── ٢. الإملاء والتحليل ── */
+      const cap = app.querySelector('#capture-input');
+      ok('مربع الإملاء يقبل النص', cap !== null);
+      cap.value = 'بكرة أراجع حسابات العملاء المتأخرة، وأتابع مع المندوب بشأن البضاعة الراكدة، وبعد المغرب أراجع مشكلة التنزيلات في مشروعي';
+      cap.dispatchEvent(new Event('input', { bubbles: true }));
+
+      app.querySelector('#btn-analyze').click();
+      await wait(400);
+
+      const rv = document.getElementById('review-wrap');
+      ok('تظهر بطاقة المراجعة بعد التحليل', rv !== null);
+      const rvCards = document.querySelectorAll('.rv-card');
+      ok('٣ بطاقات مراجعة (٣ مهام)', rvCards.length === 3, 'العدد الفعلي: ' + rvCards.length);
+      ok('كل بطاقة لها حقل عنوان', document.querySelectorAll('.rv-title').length === 3);
+      ok('كل بطاقة لها اختيار القسم', document.querySelectorAll('.rv-f select[data-field="sectionId"]').length === 3);
+      ok('كل بطاقة لها حقل تاريخ', document.querySelectorAll('.rv-f input[type="date"]').length === 3);
+      ok('زر حفظ المهام موجود', document.getElementById('rv-save') !== null);
+      ok('زر إلغاء المراجعة موجود', document.getElementById('rv-cancel') !== null);
+
+      /* ── ٣. الحفظ ── */
+      const beforeTasks = DH.store.state.tasks.length;
+      document.getElementById('rv-save').click();
+      await wait(300);
+
+      ok('حُفظت ٣ مهام', DH.store.state.tasks.length === beforeTasks + 3,
+        'قبل: ' + beforeTasks + ' بعد: ' + DH.store.state.tasks.length);
+      ok('اختفت بطاقة المراجعة بعد الحفظ', document.getElementById('review-wrap') === null);
+      ok('ظهرت المهام في القائمة', document.querySelectorAll('.task-card').length >= 3);
+
+      const savedRaw = localStorage.getItem('dh_tasks');
+      ok('المهام مخزّنة في localStorage', savedRaw && JSON.parse(savedRaw).length >= 3);
+
+      const saved = JSON.parse(savedRaw);
+      const stockTask = saved.find(t => t.categoryId === 'cat_stock');
+      ok('مهمة البضاعة الراكدة صُنّفت للمخزون', !!stockTask);
+      const bugTask = saved.find(t => t.sectionId === 'sec_tech');
+      ok('مهمة المشكلة صُنّفت كتقنية', !!bugTask);
+      const tomorrow = saved.find(t => t.dueDate !== null);
+      ok('التاريخ استُخرج لمهمة واحدة على الأقل', !!tomorrow);
+
+      /* ── ٤. تصفية وتبويبات ── */
+      const techTab = app.querySelector('.tab[data-sec="sec_tech"]');
+      techTab.click();
+      await wait(150);
+      const techCards = document.querySelectorAll('.task-card').length;
+      ok('تبويب «مشاريعي» يعرض مهمة واحدة', techCards === 1, 'العدد: ' + techCards);
+
+      const allTab = app.querySelector('.tab[data-sec="all"]');
+      allTab.click();
+      await wait(150);
+      ok('تبويب «الكل» يعرض كل المهام', document.querySelectorAll('.task-card').length === 3);
+
+      /* ── ٥. الإنجاز ── */
+      const firstCheck = document.querySelector('.tc-check');
+      ok('زر الإنجاز موجود', firstCheck !== null);
+      const firstId = firstCheck.dataset.tid;
+      firstCheck.click();
+      await wait(200);
+      const taskAfter = DH.store.getTask(firstId);
+      ok('المهمة صارت منجزة', taskAfter.status === 'done');
+      ok('سُجّل وقت الإنجاز', !!taskAfter.completedAt);
+      ok('ظهرت في «أُنجزت اليوم»', /أُنجزت اليوم/.test(app.textContent));
+
+      /* ── ٦. الإرجاع ── */
+      DH.store.reopenTask(firstId);
+      DH.ui.render();
+      await wait(150);
+      ok('أُعيدت المهمة إلى القائمة', DH.store.getTask(firstId).status === 'open');
+
+      /* ── ٧. مؤقت العمل ── */
+      const timerBtn = document.querySelector('.tc-acts .icon-btn[data-act="timer"]');
+      ok('زر المؤقت موجود', timerBtn !== null);
+      if (timerBtn) {
+        timerBtn.click();
+        await wait(250);
+        ok('المؤقت يعمل', DH.store.state.activeTimer !== null);
+        ok('ظهرت لوحة المؤقت النشط', document.querySelector('.active-timer') !== null);
+        ok('ساعة المؤقت ظاهرة', document.getElementById('at-clock') !== null);
+
+        const pauseBtn = document.getElementById('t-pause');
+        ok('زر الإيقاف المؤقت موجود', pauseBtn !== null);
+        if (pauseBtn) {
+          pauseBtn.click();
+          await wait(200);
+          ok('المؤقت متوقف مؤقتًا', DH.store.state.activeTimer.paused);
+          const resumeBtn = document.getElementById('t-resume');
+          ok('زر الاستئناف ظهر', resumeBtn !== null);
+          if (resumeBtn) {
+            resumeBtn.click();
+            await wait(200);
+            ok('المؤقت استُؤنف', !DH.store.state.activeTimer.paused);
+          }
+        }
+
+        const stopBtn = document.getElementById('t-stop');
+        if (stopBtn) { stopBtn.click(); await wait(250); }
+        ok('المؤقت أُوقف', DH.store.state.activeTimer === null);
+      }
+
+      /* ── ٨. البحث ── */
+      const search = document.getElementById('flt-search');
+      if (search) {
+        search.value = 'الراكدة';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        await wait(450);
+        const found = document.querySelectorAll('.task-card').length;
+        ok('البحث عن «الراكدة» يجد مهمة واحدة', found === 1, 'العدد: ' + found);
+
+        const s2 = document.getElementById('flt-search');
+        s2.value = '';
+        s2.dispatchEvent(new Event('input', { bubbles: true }));
+        await wait(450);
+      }
+
+      /* ── ٩. المساعدة الذكية ── */
+      DH.store.addTask({ title: 'تعميم للمندوبين بشأن الزيارات', sectionId: 'sec_work' });
+      DH.ui.render();
+      await wait(200);
+      ok('ظهر زر «جهّزها لي»', document.querySelector('.ac-go') !== null);
+      ok('ظهرت مهمة في قسم المساعدة', /أقدر أساعدك فيها/.test(app.textContent));
+
+      /* ── ١٠. الاجتماعات ── */
+      const meetBtn = document.getElementById('bb-meeting') || document.getElementById('btn-new-meeting');
+      ok('زر إنشاء الاجتماع موجود', meetBtn !== null);
+
+      /* ── ١١. الإعدادات ── */
+      document.getElementById('btn-settings').click();
+      await wait(250);
+      const settingsSheet = document.querySelector('.modal-settings');
+      ok('نافذة الإعدادات تفتح', settingsSheet !== null);
+      if (settingsSheet) {
+        ok('إعدادات المظهر موجودة', document.getElementById('set-theme') !== null);
+        ok('إعدادات التذكير موجودة', document.getElementById('set-rem-on') !== null);
+        ok('اختيار أيام الدوام موجود', document.querySelectorAll('.day-chip').length === 7);
+        ok('حالة التقويم معروضة بصدق',
+          /لم يتم ربط/.test(settingsSheet.textContent));
+        ok('إعدادات الذكاء الاصطناعي موجودة', document.getElementById('set-ai-url') !== null);
+        ok('أزرار النسخ الاحتياطي موجودة', document.getElementById('set-export') !== null);
+        ok('توضيح صادق عن الإشعارات',
+          /أثناء فتح التطبيق فقط/.test(settingsSheet.textContent));
+        ok('إعداد المسودة: تذكير قبل 15 دقيقة',
+          document.getElementById('set-lead') && document.getElementById('set-lead').value === '15');
+      }
+
+      /* ── ١٢. المظهر الليلي ── */
+      const themeBtn = document.getElementById('btn-theme');
+      if (themeBtn) {
+        const wasDark = document.body.classList.contains('dark');
+        themeBtn.click();
+        await wait(200);
+        ok('الوضع الليلي يتبدّل', document.body.classList.contains('dark') !== wasDark);
+        document.getElementById('btn-theme').click();
+        await wait(200);
+      }
+
+      /* ── ١٣. التحقق من الثبات بعد إعادة الرسم ── */
+      const beforeReload = JSON.parse(localStorage.getItem('dh_tasks')).length;
+      DH.store.load();
+      DH.ui.render();
+      await wait(200);
+      const afterReload = DH.store.state.tasks.length;
+      ok('البيانات لا تُفقد بعد إعادة التحميل', afterReload === beforeReload,
+        'قبل: ' + beforeReload + ' بعد: ' + afterReload);
+
+      /* ── ١٤. لا أخطاء في الطمأنينة ── */
+      ok('لا رسائل خطأ ظاهرة على الشاشة',
+        !/تعذّر تشغيل التطبيق|undefined|NaN/.test(app.textContent));
+
+    } catch (e) {
+      results.push({ name: 'خطأ عام في الاختبار', pass: false, detail: e.message + '\n' + e.stack });
+    }
+
+    // عرض النتيجة
+    const passed = results.filter(r => r.pass).length;
+    const failed = results.length - passed;
+    document.body.innerHTML =
+      '<div style="padding:16px;font-family:Tahoma,sans-serif;direction:rtl" id="report">' +
+      '<h2 style="color:' + (failed ? '#C0392B' : '#2E7D32') + '">' +
+      (failed ? '✗ فشل ' + failed + ' من ' + results.length : '✓ نجحت جميع اختبارات الواجهة: ' + passed) +
+      '</h2>' +
+      results.map(r =>
+        '<div style="padding:6px 8px;margin:4px 0;border-radius:6px;background:' +
+        (r.pass ? '#E8F5E9' : '#FFEBEE') + ';color:' + (r.pass ? '#2E7D32' : '#C0392B') + '">' +
+        (r.pass ? '✓' : '✗') + ' ' + r.name +
+        (r.detail ? ' <span style="opacity:.7;font-size:12px">— ' + r.detail + '</span>' : '') +
+        '</div>').join('') +
+      '</div>';
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    setTimeout(run, 50);
+  }
+})();
+</script>
+</body>
+</html>

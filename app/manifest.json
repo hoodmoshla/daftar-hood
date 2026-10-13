@@ -1,0 +1,22 @@
+{
+  "name": "دفتر هود الذكي",
+  "short_name": "دفتر هود",
+  "description": "مساعد شخصي لإدارة العمل والمشاريع والحياة اليومية — مهام بالصوت، مؤقت عمل، اجتماعات وتقويم.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F6F5",
+  "theme_color": "#2E7D6B",
+  "categories": ["productivity", "business", "utilities"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%232E7D6B'/%3E%3Ctext y='370' x='256' font-size='300' text-anchor='middle'%3E%F0%9F%93%94%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
